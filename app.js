@@ -33,7 +33,8 @@ mongoose.connect("mongodb://127.0.0.1:27017/userDB", { useNewUrlParser: true });
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
-    googleId:String
+    googleId:String,
+    secret:String
 });
 
  userSchema.plugin(passportLocalMongoose);
@@ -42,17 +43,21 @@ const userSchema = new mongoose.Schema({
 const User = new mongoose.model("User", userSchema);
 passport.use(User.createStrategy());
 
-passport.serializeUser(function(user, done) {
-    done(null, user.id); 
-   // where is this user.id going? Are we supposed to access this anywhere?
-});
-
-// used to deserialize the user
-passport.deserializeUser(function(id, done) {
-    User.findById(id, function(err, user) {
-        done(err, user);
+passport.serializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, {
+        id: user.id,
+        username: user.username,
+        picture: user.picture
+      });
     });
-});
+  });
+  
+  passport.deserializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, user);
+    });
+  });
 
 var GoogleStrategy = require('passport-google-oauth20').Strategy;
 
@@ -96,12 +101,36 @@ app.get("/register", (req, res) => {
 });
 
 app.get("/secrets",function(req,res){
+    User.find({"secret":{$ne:null}}).then((founduser)=>{
+        res.render("secrets",{userWithSecrets:founduser})
+    }).catch((err)=>{
+        console.log(err);
+    })
+});
+
+app.get("/submit",(req,res)=>{
     if(req.isAuthenticated()){
-        res.render("secrets");
+        res.render("submit");
     }else{
         res.redirect("/login");
     }
 });
+
+app.post("/submit",(req,res)=>{
+    const submittedSecret=req.body.secret;
+
+    User.findById(req.user.id).then((founduser)=>{
+        founduser.secret=submittedSecret;
+        founduser.save().then(()=>{
+            res.redirect("/secrets")
+        })
+    }).catch((err)=>{
+        console.log(err);
+    })
+
+});
+
+
 app.post("/register", (req, res) => {
 
     User.register({username:req.body.username},req.body.password).then(function(){
